@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:weather/screens/home_screens.dart';
 import 'package:weather/utils/location_helper.dart';
 
 class LoadingScreen extends StatefulWidget {
@@ -11,23 +12,32 @@ class LoadingScreen extends StatefulWidget {
 
 class _LoadingScreenState extends State<LoadingScreen> {
   late LocationHelper locationHelper;
+
   @override
   void initState() {
     super.initState();
     getLocation();
+    updateLat();
   }
 
   Future<void> getLocation() async {
     locationHelper = LocationHelper();
     await locationHelper.getCurrentLocation();
-
-    if (locationHelper.latitude == null || locationHelper.longitude == null) {
-      print("Konuma erişilemiyor");
-    } else {
-      print('Latitude' + locationHelper.latitude.toString());
-      print('longitude' + locationHelper.longitude.toString());
-    }
   }
+
+  Future<void> updateLat() async {
+    await getLocation();
+    lat = locationHelper.latitude;
+    long = locationHelper.longitude;
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) {
+      return Home(
+        lat: lat, long: long ,
+      );
+    }));
+  }
+
+  late double? lat;
+  late double? long;
 
   @override
   Widget build(BuildContext context) {

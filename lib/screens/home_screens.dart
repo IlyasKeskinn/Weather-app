@@ -1,32 +1,54 @@
+// ignore_for_file: public_member_api_docs, sort_constructors_first
+import 'dart:convert';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:weather/services/weather_model.dart';
-import 'package:weather/services/weather_services.dart';
+import 'package:http/http.dart' as http;
+
+import 'package:weather/services/weather.dart';
+import 'package:weather/utils/location_helper.dart';
 
 class Home extends StatefulWidget {
-  const Home({super.key});
-
+  const Home({
+    Key? key,
+    this.lat,
+    this.long,
+  }) : super(key: key);
+  final lat;
+  final long;
   @override
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
-  List<WeatherModel>? _items;
-  late final IWeatherService _weatherService;
-
+class _HomeState extends State<Home> with AutomaticKeepAliveClientMixin {
   @override
   void initState() {
     super.initState();
-    _weatherService = WeatherService();
-    fetchItems();
+    myWeather = fetchWeather();
   }
 
-  Future<void> fetchItems() async {
-    _items = await _weatherService.fetchWeatherItems();
+  String API_KEY = 'YOUR API KEY';
+
+  Future<Weather> fetchWeather() async {
+    final resp = await http.get(Uri.parse(
+        'https://api.openweathermap.org/data/2.5/weather?lat=${widget.lat}&lon=${widget.long}&lang=tr&appid=$API_KEY&units=metric'));
+
+    if (resp.statusCode == 200) {
+      Map<String, dynamic> json = jsonDecode(resp.body);
+
+      return Weather.fromJson(json);
+    } else {
+      throw Exception('Veriler yüklenemedi...');
+    }
   }
+
+  late Future<Weather> myWeather;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -36,7 +58,7 @@ class _HomeState extends State<Home> {
           IconButton(onPressed: () {}, icon: const Icon(Icons.search_rounded))
         ],
       ),
-      drawer: const Drawer(),
+      drawer: const Drawer(backgroundColor: Colors.amber),
       body: Container(
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
@@ -46,36 +68,78 @@ class _HomeState extends State<Home> {
                 end: Alignment.bottomRight,
                 colors: [Color(0xffFEB054), Color(0xffFEA14E)])),
         child: Padding(
-          padding: const EdgeInsets.all(18.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(
-                height: 100,
-              ),
-              districtMethod(context),
-              Row(
-                children: [weatherIcon(), degreeText(context)],
-              ),
-              ExtraCard(cardText: 'wind', icon: 'wind', value: '19'),
-              SizedBox(
-                height: 10,
-              ),
-              ExtraCard(icon: 'humidity', cardText: 'Humidity', value: '65'),
-            ],
-          ),
-        ),
+            padding: const EdgeInsets.all(18.0),
+            child: FutureBuilder(
+              future: myWeather,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(
+                        height: 60,
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: districtMethod(
+                                context,
+                                '${snapshot.data!.name}',
+                                '${snapshot.data!.sys['country']}'),
+                          ),
+                          Expanded(
+                            child: Container(
+                                child: Center(
+                                    child: Text(
+                              snapshot.data!.weather[0]['description']
+                                  .toString()
+                                  .toUpperCase(),
+                              style: TextStyle(
+                                  fontSize: 24, color: Colors.white60),
+                            ))),
+                          )
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          weatherIcon('${snapshot.data!.weather[0]['icon']}'),
+                          degreeText(context,
+                              '${snapshot.data!.main['temp'].toStringAsFixed(0)}°'),
+                        ],
+                      ),
+                      ExtraCard(
+                          cardText: 'Rüzgar',
+                          icon: 'wind',
+                          value: '${snapshot.data!.wind['speed']} km/s'),
+                      SizedBox(
+                        height: 10,
+                      ),
+                      ExtraCard(
+                          icon: 'humidity',
+                          cardText: 'Nem',
+                          value: '${snapshot.data!.main['humidity']}%'),
+                    ],
+                  );
+                } else if (snapshot.hasError) {
+                  return const Text('Veriler Alınırken Hata Oluştu');
+                } else {
+                  return SpinKitCircle(
+                    color: Colors.white,
+                  );
+                }
+              },
+            )),
       ),
     );
   }
 
-  Expanded degreeText(BuildContext context) {
+  Expanded degreeText(BuildContext context, String degree) {
     return Expanded(
       child: SizedBox(
         height: 250,
         child: Center(
           child: Text(
-            '20',
+            degree,
             style: Theme.of(context).textTheme.headline1,
           ),
         ),
@@ -83,27 +147,32 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Expanded weatherIcon() {
+  Expanded weatherIcon(String iconCode) {
     return Expanded(
-      child: SizedBox(height: 250, child: ImagePath().assetImage('cloudy')),
-    );
+        child: SizedBox(
+      height: 250,
+      child: WeatherIconNetwork().networkImage(iconCode),
+    ));
   }
 
-  Column districtMethod(BuildContext context) {
+  Column districtMethod(BuildContext context, String city, String country) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Konya,',
-          style: Theme.of(context).textTheme.headline3,
+          city ?? 'Nan',
+          style: Theme.of(context).textTheme.headline4,
         ),
         Text(
-          'Türkiye',
+          country ?? 'Nan',
           style: Theme.of(context).textTheme.headline4,
         )
       ],
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }
 
 class ExtraCard extends StatelessWidget {
@@ -160,12 +229,16 @@ class ExtraCard extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 }
+
+@override
+// TODO: implement wantKeepAlive
+bool get wantKeepAlive => true;
 
 class ImagePath {
   SvgPicture assetImage(String imageName) {
@@ -178,5 +251,15 @@ class ImagePath {
 
   String imagePath(String imageName) {
     return 'assets/svg/$imageName.svg';
+  }
+}
+
+class WeatherIconNetwork {
+  Image networkImage(String iconCode) {
+    return Image.network(imageUrl(iconCode));
+  }
+
+  String imageUrl(String iconCode) {
+    return 'http://openweathermap.org/img/wn/$iconCode@4x.png';
   }
 }
